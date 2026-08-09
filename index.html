@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🚗 핸드 스티어링 컨트롤러 (MediaPipe + ESP32)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% -10%, #ffffff 0%, #e8edf5 60%);
+    color: #1c2430;
+    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+  }
+  .app {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    max-width: 1100px;
+    width: 100%;
+  }
+  .stage {
+    position: relative;
+    width: 640px;
+    max-width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(30,40,60,0.15);
+    border: 1px solid #dbe2ee;
+  }
+  canvas#overlay {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 6px 12px;
+    background: rgba(255,255,255,0.85);
+    color: #1c2430;
+    border-radius: 20px;
+    font-size: 13px;
+    letter-spacing: 0.3px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .panel {
+    flex: 1;
+    min-width: 300px;
+    background: #ffffff;
+    border: 1px solid #dbe2ee;
+    border-radius: 16px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 10px 30px rgba(30,40,60,0.1);
+  }
+  .panel h1 {
+    margin: 0;
+    font-size: 20px;
+    color: #2a6df4;
+  }
+  .state-display {
+    text-align: center;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    padding: 22px 0;
+    border-radius: 14px;
+    background: #f3f5f9;
+    border: 2px solid #e1e6f0;
+    transition: all 0.15s ease;
+    color: #5a6577;
+  }
+  .state-display.left  { color: #1a73e8; background:#eaf2ff; border-color:#3aa0ff; }
+  .state-display.right { color: #d9432f; background:#fff1ec; border-color:#ff6a3a; }
+  .state-display.stop  { color: #5a6577; background:#f3f5f9; border-color:#e1e6f0; }
+
+  .metrics {
+    display: flex;
+    justify-content: space-between;
+    background: #f6f8fb;
+    border: 1px solid #e7ecf3;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #66748e;
+  }
+  .metrics b { color: #1c2430; font-size: 16px; }
+
+  .controls { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+
+  .ip-row { display: flex; gap: 8px; }
+  input#ipInput {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #d5dce8;
+    background: #f9fafc;
+    color: #1c2430;
+    font-size: 14px;
+  }
+  input#ipInput:focus { outline: none; border-color: #2a6df4; background:#fff; }
+
+  button#connectBtn {
+    padding: 12px 14px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2a6df4, #1948c7);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button#connectBtn.connected {
+    background: linear-gradient(135deg, #d9432f, #a12417);
+  }
+  button#connectBtn:hover { filter: brightness(1.08); }
+
+  #connStatus { font-size: 13px; color: #8592a8; }
+  #connStatus.on { color: #1e9e5a; font-weight: 600; }
+
+  label {
+    font-size: 13px;
+    color: #4c5872;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  input[type="range"] { flex: 1; }
+
+  .log {
+    margin-top: 4px;
+    background: #f6f8fb;
+    border: 1px solid #e7ecf3;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #66748e;
+    height: 110px;
+    overflow-y: auto;
+    font-family: monospace;
+    white-space: pre-wrap;
+  }
+  .footnote { font-size: 11px; color: #8592a8; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="stage">
+    <canvas id="overlay" width="640" height="480"></canvas>
+    <div class="badge" id="handBadge">카메라 준비 중...</div>
+  </div>
+
+  <div class="panel">
+    <h1>🚗 핸드 스티어링 컨트롤러</h1>
+
+    <div class="state-display stop" id="stateDisplay">STOP</div>
+
+    <div class="metrics">
+      <div>각도 <b id="angleText">0</b>°</div>
+      <div>전송값 <b id="valueText">0</b></div>
+      <div>손 인식 <b id="handsText">0</b>/2</div>
+    </div>
+
+    <div class="controls">
+      <div class="ip-row">
+        <input type="text" id="ipInput" placeholder="ESP32 IP 주소 (예: 192.168.0.101)">
+        <button id="connectBtn">📶 연결</button>
+      </div>
+      <div id="connStatus">연결 안됨</div>
+
+      <label>민감도(최대 각도)
+        <input type="range" id="maxAngle" min="20" max="70" value="45">
+        <span id="maxAngleVal">45</span>°
+      </label>
+      <label>데드존(정지 범위)
+        <input type="range" id="deadzone" min="0" max="25" value="8">
+        <span id="deadzoneVal">8</span>°
+      </label>
+      <label><input type="checkbox" id="sendToggle" checked style="width:auto;flex:none;"> ESP32로 실시간 전송</label>
+    </div>
+
+    <div class="log" id="log">대기 중...</div>
+
+    <div class="footnote">
+      두 손을 화면에 비추면 손 사이를 잇는 가상의 핸들이 표시됩니다.<br>
+      핸들이 수평(중앙)이면 STOP, 자동차와 마주보고 조작하는 기준으로 반전 적용되어 -100~100 값을 Wi-Fi(HTTP)로 ESP32에 전송합니다.<br>
+      ⚠ ESP32와 이 PC가 같은 Wi-Fi(같은 공유기)에 연결되어 있어야 하며, 카메라 접근을 위해 반드시 <b>http://localhost</b> 또는 <b>https</b> 로 열어야 합니다 (file:// 로 직접 열면 카메라가 차단될 수 있습니다).
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+(function(){
+  const canvas = document.getElementById('overlay');
+  const ctx = canvas.getContext('2d');
+  const handBadge = document.getElementById('handBadge');
+  const stateDisplay = document.getElementById('stateDisplay');
+  const angleText = document.getElementById('angleText');
+  const valueText = document.getElementById('valueText');
+  const handsText = document.getElementById('handsText');
+  const connectBtn = document.getElementById('connectBtn');
+  const ipInput = document.getElementById('ipInput');
+  const connStatus = document.getElementById('connStatus');
+  const maxAngleInput = document.getElementById('maxAngle');
+  const deadzoneInput = document.getElementById('deadzone');
+  const maxAngleVal = document.getElementById('maxAngleVal');
+  const deadzoneVal = document.getElementById('deadzoneVal');
+  const sendToggle = document.getElementById('sendToggle');
+  const logEl = document.getElementById('log');
+
+  maxAngleInput.addEventListener('input', () => maxAngleVal.textContent = maxAngleInput.value);
+  deadzoneInput.addEventListener('input', () => deadzoneVal.textContent = deadzoneInput.value);
+
+  function log(msg){
+    const t = new Date().toLocaleTimeString('ko-KR', {hour12:false});
+    logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+    if (logEl.textContent.length > 4000) logEl.textContent = logEl.textContent.slice(0, 4000);
+  }
+
+  // ---------- Wi-Fi(HTTP) ESP32 연결 ----------
+  // ESP32가 아래 형식의 GET 요청을 받아 처리한다: http://<IP>/steer?v=-80
+  let espIP = '';
+  let wifiConnected = false;
+  let consecutiveFailures = 0;
+
+  function setConnectedUI(on){
+    wifiConnected = on;
+    connectBtn.textContent = on ? '📶 연결 해제' : '📶 연결';
+    connectBtn.classList.toggle('connected', on);
+    connStatus.textContent = on ? `연결됨 (${espIP})` : '연결 안됨';
+    connStatus.classList.toggle('on', on);
+  }
+
+  async function connectWifi(){
+    const ip = ipInput.value.trim();
+    if (!ip){
+      alert('ESP32의 IP 주소를 입력해주세요 (예: 192.168.0.101)');
+      return;
+    }
+    try {
+      const res = await fetch(`http://${ip}/steer?v=0`, { method: 'GET', mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      espIP = ip;
+      consecutiveFailures = 0;
+      setConnectedUI(true);
+      log(`ESP32(${ip})에 연결되었습니다`);
+    } catch(err){
+      console.error(err);
+      setConnectedUI(false);
+      log('연결 실패: ' + err.message + ' (같은 Wi-Fi인지, IP가 맞는지 확인하세요)');
+    }
+  }
+
+  function disconnectWifi(){
+    espIP = '';
+    setConnectedUI(false);
+    log('연결 해제됨');
+  }
+
+  connectBtn.addEventListener('click', () => {
+    if (wifiConnected) disconnectWifi();
+    else connectWifi();
+  });
+
+  ipInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') connectWifi();
+  });
+
+  async function sendValue(v){
+    if (!espIP) return;
+    try {
+      const res = await fetch(`http://${espIP}/steer?v=${v}`, { method: 'GET', mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      consecutiveFailures = 0;
+    } catch(err){
+      consecutiveFailures++;
+      if (consecutiveFailures === 5){
+        log('ESP32 응답 없음 - 연결이 끊긴 것 같습니다');
+        setConnectedUI(false);
+      }
+    }
+  }
+
+  // ---------- MediaPipe Hands ----------
+  let latestValue = 0;
+  let latestState = 'STOP';
+
+  function centroid(landmarks){
+    let sx = 0, sy = 0;
+    for (const p of landmarks){ sx += p.x; sy += p.y; }
+    return { x: sx / landmarks.length, y: sy / landmarks.length };
+  }
+
+  function drawWheel(ctx, cx, cy, radius, angleDeg, state){
+    let hubColor = '#cfd8e6';   // stop
+    if (state === 'LEFT')  hubColor = '#3aa0ff';
+    if (state === 'RIGHT') hubColor = '#ff6a3a';
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angleDeg * Math.PI / 180);
+
+    // 바깥 림
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(10, radius * 0.14);
+    ctx.strokeStyle = 'rgba(20,20,20,0.85)';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.stroke();
+
+    // 스포크 3개
+    ctx.lineWidth = Math.max(6, radius * 0.09);
+    ctx.strokeStyle = 'rgba(20,20,20,0.85)';
+    for (let i = 0; i < 3; i++){
+      const a = i * (Math.PI * 2 / 3) - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(radius * Math.cos(a), radius * Math.sin(a));
+      ctx.stroke();
+    }
+
+    // 정중앙 추(허브)
+    const hubR = Math.max(14, radius * 0.22);
+    ctx.beginPath();
+    ctx.arc(0, 0, hubR, 0, Math.PI * 2);
+    ctx.fillStyle = hubColor;
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#141414';
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function updateUI(state, value, angleDeg, handsCount){
+    angleText.textContent = Math.round(angleDeg);
+    valueText.textContent = value;
+    handsText.textContent = handsCount;
+
+    stateDisplay.textContent = state;
+    stateDisplay.classList.remove('left', 'right', 'stop');
+    stateDisplay.classList.add(state.toLowerCase());
+
+    handBadge.textContent = handsCount === 2 ? '양손 인식됨 - 핸들 조작 중' :
+      (handsCount === 1 ? '한 손만 인식됨 - 두 손 모두 화면에 비춰주세요' : '손을 인식하는 중...');
+
+    latestValue = value;
+    latestState = state;
+  }
+
+  function onResults(results){
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 좌우 반전(거울 모드)으로 화면 전체를 그림
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+    let state = 'STOP', value = 0, angleDeg = 0;
+    const handsCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+
+    if (handsCount === 2){
+      const c0 = centroid(results.multiHandLandmarks[0]);
+      const c1 = centroid(results.multiHandLandmarks[1]);
+      const p0 = { x: c0.x * canvas.width, y: c0.y * canvas.height };
+      const p1 = { x: c1.x * canvas.width, y: c1.y * canvas.height };
+
+      const left  = p0.x <= p1.x ? p0 : p1;
+      const right = p0.x <= p1.x ? p1 : p0;
+      const dx = right.x - left.x;
+      const dy = right.y - left.y;
+      angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+      const maxAngle = parseFloat(maxAngleInput.value);
+      const deadzoneDeg = parseFloat(deadzoneInput.value);
+      value = Math.max(-100, Math.min(100, Math.round((angleDeg / maxAngle) * 100)));
+      // 자동차가 사용자를 마주보는 방향으로 놓이므로 좌/우를 반전한다
+      value = -value;
+      const deadzoneValue = Math.round((deadzoneDeg / maxAngle) * 100);
+
+      if (value > deadzoneValue) state = 'RIGHT';
+      else if (value < -deadzoneValue) state = 'LEFT';
+      else { state = 'STOP'; value = 0; }
+
+      // 두 손을 잇는 그립 라인
+      ctx.beginPath();
+      ctx.moveTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.strokeStyle = 'rgba(0,255,150,0.85)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      [p0, p1].forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = '#00ff99';
+        ctx.fill();
+      });
+
+      for (const lm of results.multiHandLandmarks){
+        drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.35)', lineWidth: 2 });
+        drawLandmarks(ctx, lm, { color: '#00d4ff', lineWidth: 1, radius: 2 });
+      }
+
+      const cx = (left.x + right.x) / 2;
+      const cy = (left.y + right.y) / 2;
+      const radius = Math.max(60, Math.hypot(dx, dy) / 2);
+      drawWheel(ctx, cx, cy, radius, angleDeg, state);
+    } else {
+      for (const lm of (results.multiHandLandmarks || [])){
+        drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.35)', lineWidth: 2 });
+        drawLandmarks(ctx, lm, { color: '#00d4ff', lineWidth: 1, radius: 2 });
+      }
+    }
+
+    ctx.restore();
+    updateUI(state, value, angleDeg, handsCount);
+  }
+
+  const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.7
+  });
+  hands.onResults(onResults);
+
+  const videoEl = document.createElement('video');
+  videoEl.style.display = 'none';
+  document.body.appendChild(videoEl);
+
+  const camera = new Camera(videoEl, {
+    onFrame: async () => { await hands.send({ image: videoEl }); },
+    width: 640,
+    height: 480
+  });
+
+  camera.start().then(() => {
+    handBadge.textContent = '손을 인식하는 중...';
+    log('노트북 카메라 시작됨');
+  }).catch(err => {
+    handBadge.textContent = '카메라 접근 실패';
+    log('카메라 오류: ' + err.message);
+  });
+
+  // ---------- 100ms 주기로 ESP32에 전송 ----------
+  setInterval(() => {
+    if (sendToggle.checked && wifiConnected){
+      sendValue(latestValue);
+    }
+  }, 100);
+
+})();
+</script>
+</body>
+</html>
