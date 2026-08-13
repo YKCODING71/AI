@@ -3,480 +3,858 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🚗 핸드 스티어링 컨트롤러 (MediaPipe + ESP32)</title>
+<title>스마트팜 AI 에이전트 - 자기검증 · 신뢰도 기반 함수 선택 데모</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background: radial-gradient(circle at 50% -10%, #ffffff 0%, #e8edf5 60%);
-    color: #1c2430;
-    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    padding: 24px;
+  :root{
+    --bg:#f5f7fb;
+    --panel:#ffffff;
+    --panel-2:#f2f4f9;
+    --border:#e2e6f0;
+    --text:#1c2333;
+    --muted:#6b7385;
+    --accent:#3b6fe0;
+    --accent-2:#12b391;
+    --warn:#c8791f;
+    --bad:#d64545;
+    --good:#1f9d63;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(28,35,51,0.04), 0 8px 24px rgba(28,35,51,0.06);
   }
-  .app {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    max-width: 1100px;
-    width: 100%;
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:"Pretendard","Apple SD Gothic Neo","Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    min-height:100vh;
   }
-  .stage {
-    position: relative;
-    width: 640px;
-    max-width: 100%;
-    aspect-ratio: 4 / 3;
-    background: #000;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 10px 30px rgba(30,40,60,0.15);
-    border: 1px solid #dbe2ee;
+  header{
+    padding:28px 32px 18px;
+    border-bottom:1px solid var(--border);
+    background:#ffffff;
   }
-  canvas#overlay {
-    width: 100%;
-    height: 100%;
-    display: block;
+  header h1{
+    margin:0 0 6px;
+    font-size:20px;
+    letter-spacing:-0.2px;
   }
-  .badge {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    padding: 6px 12px;
-    background: rgba(255,255,255,0.85);
-    color: #1c2430;
-    border-radius: 20px;
-    font-size: 13px;
-    letter-spacing: 0.3px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  header p{
+    margin:0;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.6;
   }
-  .panel {
-    flex: 1;
-    min-width: 300px;
-    background: #ffffff;
-    border: 1px solid #dbe2ee;
-    border-radius: 16px;
-    padding: 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: 0 10px 30px rgba(30,40,60,0.1);
+  .badge{
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:999px;
+    background:rgba(59,111,224,0.08);
+    color:var(--accent);
+    font-size:11px;
+    margin-right:6px;
+    border:1px solid rgba(59,111,224,0.25);
   }
-  .panel h1 {
-    margin: 0;
-    font-size: 20px;
-    color: #2a6df4;
+  .layout{
+    display:grid;
+    grid-template-columns:300px 1fr;
+    gap:20px;
+    padding:24px 32px 48px;
+    max-width:1400px;
+    margin:0 auto;
   }
-  .state-display {
-    text-align: center;
-    font-size: 40px;
-    font-weight: 800;
-    letter-spacing: 3px;
-    padding: 22px 0;
-    border-radius: 14px;
-    background: #f3f5f9;
-    border: 2px solid #e1e6f0;
-    transition: all 0.15s ease;
-    color: #5a6577;
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;}
   }
-  .state-display.left  { color: #1a73e8; background:#eaf2ff; border-color:#3aa0ff; }
-  .state-display.right { color: #d9432f; background:#fff1ec; border-color:#ff6a3a; }
-  .state-display.stop  { color: #5a6577; background:#f3f5f9; border-color:#e1e6f0; }
-
-  .metrics {
-    display: flex;
-    justify-content: space-between;
-    background: #f6f8fb;
-    border: 1px solid #e7ecf3;
-    border-radius: 10px;
-    padding: 12px 16px;
-    font-size: 14px;
-    color: #66748e;
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+    box-shadow:var(--shadow);
   }
-  .metrics b { color: #1c2430; font-size: 16px; }
-
-  .controls { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
-
-  .ip-row { display: flex; gap: 8px; }
-  input#ipInput {
-    flex: 1;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid #d5dce8;
-    background: #f9fafc;
-    color: #1c2430;
-    font-size: 14px;
+  .panel h2{
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:var(--muted);
+    margin:0 0 14px;
   }
-  input#ipInput:focus { outline: none; border-color: #2a6df4; background:#fff; }
-
-  button#connectBtn {
-    padding: 12px 14px;
-    border: none;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #2a6df4, #1948c7);
-    color: #fff;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
+  .fn-card{
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px 14px;
+    margin-bottom:10px;
   }
-  button#connectBtn.connected {
-    background: linear-gradient(135deg, #d9432f, #a12417);
+  .fn-card code{
+    color:var(--accent-2);
+    font-size:13px;
+    font-weight:600;
   }
-  button#connectBtn:hover { filter: brightness(1.08); }
-
-  #connStatus { font-size: 13px; color: #8592a8; }
-  #connStatus.on { color: #1e9e5a; font-weight: 600; }
-
-  label {
-    font-size: 13px;
-    color: #4c5872;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .fn-card p{
+    margin:6px 0 0;
+    font-size:12.5px;
+    color:var(--muted);
+    line-height:1.5;
   }
-  input[type="range"] { flex: 1; }
-
-  .log {
-    margin-top: 4px;
-    background: #f6f8fb;
-    border: 1px solid #e7ecf3;
-    border-radius: 10px;
-    padding: 8px 10px;
-    font-size: 11px;
-    color: #66748e;
-    height: 110px;
-    overflow-y: auto;
-    font-family: monospace;
-    white-space: pre-wrap;
+  .note{
+    font-size:12px;
+    color:var(--muted);
+    line-height:1.6;
+    margin-top:8px;
+    padding-top:12px;
+    border-top:1px dashed var(--border);
   }
-  .footnote { font-size: 11px; color: #8592a8; line-height: 1.5; }
+  .main-col{
+    display:flex;
+    flex-direction:column;
+    gap:20px;
+  }
+  .presets{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .preset-btn{
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:8px 12px;
+    border-radius:999px;
+    font-size:12.5px;
+    cursor:pointer;
+    transition:border-color .15s,background .15s;
+  }
+  .preset-btn:hover{
+    border-color:var(--accent);
+    background:rgba(59,111,224,0.06);
+  }
+  .preset-btn.err{border-color:rgba(214,69,69,0.4);color:var(--bad);}
+  .preset-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .input-row{
+    display:flex;
+    gap:10px;
+  }
+  .input-row input{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:14px;
+  }
+  .input-row input:focus{outline:none;border-color:var(--accent);}
+  .run-btn{
+    background:var(--accent);
+    color:#ffffff;
+    border:none;
+    padding:0 22px;
+    border-radius:10px;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .run-btn:hover{filter:brightness(1.08);}
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .switch{
+    position:relative;
+    width:42px;
+    height:24px;
+    background:#c7cede;
+    border-radius:999px;
+    cursor:pointer;
+    transition:background .15s;
+  }
+  .switch.on{background:var(--accent);}
+  .switch::after{
+    content:"";
+    position:absolute;
+    top:3px;left:3px;
+    width:18px;height:18px;
+    background:#fff;
+    border-radius:50%;
+    transition:left .15s;
+  }
+  .switch.on::after{left:21px;}
+  .compare{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+  }
+  @media (max-width:900px){
+    .compare{grid-template-columns:1fr;}
+  }
+  .trace-panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+    box-shadow:var(--shadow);
+  }
+  .trace-panel h3{
+    margin:0 0 12px;
+    font-size:13px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .tag{
+    font-size:10.5px;
+    padding:2px 8px;
+    border-radius:999px;
+    font-weight:700;
+  }
+  .tag.baseline{background:rgba(214,69,69,0.1);color:var(--bad);border:1px solid rgba(214,69,69,0.3);}
+  .tag.improved{background:rgba(31,157,99,0.1);color:var(--good);border:1px solid rgba(31,157,99,0.3);}
+  .step{
+    margin-bottom:14px;
+  }
+  .step .step-title{
+    font-size:11.5px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    margin-bottom:6px;
+  }
+  .bar-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:6px;
+    font-size:12.5px;
+  }
+  .bar-label{
+    width:150px;
+    flex-shrink:0;
+    color:var(--muted);
+    font-family:monospace;
+    font-size:11.5px;
+  }
+  .bar-track{
+    flex:1;
+    background:#eef1f7;
+    border-radius:6px;
+    height:14px;
+    overflow:hidden;
+    border:1px solid var(--border);
+  }
+  .bar-fill{
+    height:100%;
+    background:linear-gradient(90deg,var(--accent),var(--accent-2));
+    border-radius:6px 0 0 6px;
+    transition:width .3s;
+  }
+  .bar-fill.top{background:linear-gradient(90deg,#1f9d63,#12b391);}
+  .bar-pct{
+    width:40px;
+    text-align:right;
+    color:var(--muted);
+    font-size:11.5px;
+  }
+  .verdict{
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:13px;
+    line-height:1.6;
+    margin-top:4px;
+  }
+  .verdict.ok{background:rgba(31,157,99,0.08);border:1px solid rgba(31,157,99,0.25);}
+  .verdict.warn{background:rgba(200,121,31,0.08);border:1px solid rgba(200,121,31,0.25);}
+  .verdict.bad{background:rgba(214,69,69,0.08);border:1px solid rgba(214,69,69,0.25);}
+  .verdict b{display:block;margin-bottom:4px;font-size:13px;}
+  .call-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:6px;
+  }
+  .call-chip{
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    padding:4px 10px;
+    border-radius:999px;
+    font-family:monospace;
+    font-size:11.5px;
+  }
+  .call-chip.extra{border-color:rgba(214,69,69,0.5);color:var(--bad);}
+  .call-chip.undefined{border-color:rgba(214,69,69,0.6);color:var(--bad);background:rgba(214,69,69,0.06);}
+  .final-answer{
+    margin-top:10px;
+    background:#f7f8fb;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:13px;
+    color:#3a4256;
+    line-height:1.6;
+  }
+  footer{
+    text-align:center;
+    color:var(--muted);
+    font-size:11.5px;
+    padding:24px;
+    border-top:1px solid var(--border);
+  }
+  .empty-state{
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+    padding:40px 10px;
+  }
 </style>
 </head>
 <body>
 
-<div class="app">
-  <div class="stage">
-    <canvas id="overlay" width="640" height="480"></canvas>
-    <div class="badge" id="handBadge">카메라 준비 중...</div>
+<header>
+  <div>
+    <span class="badge">3회차 진행 데모</span>
+    <span class="badge">자기검증 · 신뢰도 기반 함수 선택</span>
+  </div>
+  <h1>스마트팜 AI 에이전트 — 함수 호출(Function Calling) 신뢰성 시연</h1>
+  <p>
+    자연어 명령을 입력하면 에이전트가 정의된 함수(조회 기능) 중 어떤 것을 호출할지 결정하는 과정을 단계별로 보여줍니다.
+    <b>시뮬레이션 모드</b>는 보고서의 4가지 오류 유형(비정의 호출·메타질문 처리실패·개념 혼동·과잉 호출)이
+    어떻게 발생·완화되는지 키워드 기반 mock 로직으로 보여주는 개념 시연이고,
+    <b>실제 API 연동 모드</b>는 진짜 OpenAI 함수 호출 결과를 보여주며, 로컬 파이썬 서버(server.py)로 연결하거나
+    본인의 API 키를 직접 입력해 웹(GitHub + Vercel 배포)에서 바로 실행하는 두 가지 방식을 지원합니다.
+  </p>
+</header>
+
+<div class="layout">
+  <div class="panel">
+    <h2>등록된 함수 (조회 전용)</h2>
+    <div class="fn-card"><code>get_internal_sensor()</code><p>내부(하우스) 온도·습도 조회</p></div>
+    <div class="fn-card"><code>get_external_sensor()</code><p>외부 환경 — CO₂·습도·기온 조회</p></div>
+    <div class="fn-card"><code>get_crop_status()</code><p>작물 생육 상태(수확 시기 포함) 조회</p></div>
+    <div class="fn-card"><code>get_now_time()</code><p>현재 날짜·시각 조회</p></div>
+    <div class="note">
+      ※ get_weather 등은 <b>정의되지 않은 함수</b>입니다. 아직 스마트팜에서
+      무엇을 제어(actuator)할지 결정되지 않아, 이번 단계는 4개의 조회 함수만으로
+      "함수 선택 신뢰성" 문제에 집중합니다.
+    </div>
   </div>
 
-  <div class="panel">
-    <h1>🚗 핸드 스티어링 컨트롤러</h1>
-
-    <div class="state-display stop" id="stateDisplay">STOP</div>
-
-    <div class="metrics">
-      <div>각도 <b id="angleText">0</b>°</div>
-      <div>전송값 <b id="valueText">0</b></div>
-      <div>손 인식 <b id="handsText">0</b>/2</div>
-    </div>
-
-    <div class="controls">
-      <div class="ip-row">
-        <input type="text" id="ipInput" placeholder="ESP32 IP 주소 (예: 192.168.0.101)">
-        <button id="connectBtn">📶 연결</button>
+  <div class="main-col">
+    <div class="panel">
+      <h2>예시 질의 (보고서의 4가지 오류 유형 재현)</h2>
+      <div class="presets" id="presets"></div>
+      <div style="height:14px;"></div>
+      <div class="input-row">
+        <input id="queryInput" type="text" placeholder="예: 하우스 습도 얼마나 돼? / 오늘 날씨 알려줘 / 네가 할 수 있는 일이 뭐야?">
+        <button class="run-btn" id="runBtn">실행</button>
       </div>
-      <div id="connStatus">연결 안됨</div>
+      <div style="height:12px;"></div>
+      <div class="toggle-row">
+        <span>실행 방식: 시뮬레이션(mock)</span>
+        <div class="switch" id="modeToggle"></div>
+        <span>실제 API 연동</span>
+      </div>
+      <div style="height:10px;"></div>
+      <div class="toggle-row" id="compareToggleRow">
+        <span>비교 모드 (baseline ↔ 자기검증 적용) 동시 표시</span>
+        <div class="switch on" id="compareToggle"></div>
+      </div>
 
-      <label>민감도(최대 각도)
-        <input type="range" id="maxAngle" min="20" max="70" value="45">
-        <span id="maxAngleVal">45</span>°
-      </label>
-      <label>데드존(정지 범위)
-        <input type="range" id="deadzone" min="0" max="25" value="8">
-        <span id="deadzoneVal">8</span>°
-      </label>
-      <label><input type="checkbox" id="sendToggle" checked style="width:auto;flex:none;"> ESP32로 실시간 전송</label>
+      <div id="realModeOptions" style="display:none;margin-top:10px;">
+        <div class="presets" style="margin-bottom:10px;">
+          <button class="preset-btn" id="backendLocalBtn">로컬 서버 (server.py)</button>
+          <button class="preset-btn" id="backendProxyBtn">웹 배포용 (내 API 키 직접 입력)</button>
+        </div>
+
+        <div class="input-row" id="serverUrlRow" style="display:none;">
+          <input id="serverUrlInput" type="text" value="http://127.0.0.1:5050/api/run" placeholder="로컬 서버 주소 (server.py 실행 주소)">
+        </div>
+        <div class="note" id="localModeNote" style="display:none;">
+          <code>python server.py</code>를 먼저 실행해두어야 합니다(같은 터미널에 OPENAI_API_KEY 설정 필요).
+        </div>
+
+        <div id="proxyModeBox" style="display:none;">
+          <div class="input-row" style="margin-bottom:8px;">
+            <input id="apiKeyInput" type="password" placeholder="본인의 OpenAI API 키 (sk-...)">
+          </div>
+          <div class="input-row">
+            <input id="proxyUrlInput" type="text" value="/api/openai-proxy" placeholder="프록시 주소 (Vercel 배포 시 자동으로 /api/openai-proxy)">
+          </div>
+          <div class="note">
+            이 모드는 GitHub 저장소를 Vercel에 연결해 웹에 배포했을 때 쓰는 방식입니다.
+            입력한 API 키는 어디에도 저장되지 않고(새로고침하면 사라짐), 오직 api/openai-proxy.js를 거쳐
+            OpenAI로만 그대로 전달됩니다 — 브라우저가 api.openai.com에 직접 요청하면 CORS 정책 때문에
+            차단되기 때문에 이 얇은 중계 함수가 필요합니다. 로컬에서 미리 테스트하려면
+            <code>vercel dev</code>로 실행한 뒤 이 페이지를 열면 됩니다.
+          </div>
+        </div>
+
+        <div class="note" style="margin-top:10px;">
+          버튼을 누를 때마다 실제 OpenAI API가 호출되어 소액의 비용이 발생합니다.
+          실제 모드에서는 신뢰도 점수·baseline 비교가 표시되지 않습니다(진짜 모델의 실제 판단 결과만 보여줍니다).
+        </div>
+      </div>
     </div>
 
-    <div class="log" id="log">대기 중...</div>
-
-    <div class="footnote">
-      두 손을 화면에 비추면 손 사이를 잇는 가상의 핸들이 표시됩니다.<br>
-      핸들이 수평(중앙)이면 STOP, 자동차와 마주보고 조작하는 기준으로 반전 적용되어 -100~100 값을 Wi-Fi(HTTP)로 ESP32에 전송합니다.<br>
-      ⚠ ESP32와 이 PC가 같은 Wi-Fi(같은 공유기)에 연결되어 있어야 하며, 카메라 접근을 위해 반드시 <b>http://localhost</b> 또는 <b>https</b> 로 열어야 합니다 (file:// 로 직접 열면 카메라가 차단될 수 있습니다).
+    <div id="resultArea">
+      <div class="panel">
+        <div class="empty-state">위에서 예시 질의를 클릭하거나 직접 명령을 입력한 뒤 [실행]을 눌러보세요.</div>
+      </div>
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<footer>
+  스마트팜 AI 에이전트 함수 호출 신뢰성 연구 — 시연용 정적 페이지 (키워드 기반 mock 로직, 실제 LLM 미연동)
+</footer>
 
 <script>
-(function(){
-  const canvas = document.getElementById('overlay');
-  const ctx = canvas.getContext('2d');
-  const handBadge = document.getElementById('handBadge');
-  const stateDisplay = document.getElementById('stateDisplay');
-  const angleText = document.getElementById('angleText');
-  const valueText = document.getElementById('valueText');
-  const handsText = document.getElementById('handsText');
-  const connectBtn = document.getElementById('connectBtn');
-  const ipInput = document.getElementById('ipInput');
-  const connStatus = document.getElementById('connStatus');
-  const maxAngleInput = document.getElementById('maxAngle');
-  const deadzoneInput = document.getElementById('deadzone');
-  const maxAngleVal = document.getElementById('maxAngleVal');
-  const deadzoneVal = document.getElementById('deadzoneVal');
-  const sendToggle = document.getElementById('sendToggle');
-  const logEl = document.getElementById('log');
+const FUNCTIONS = [
+  { name:'get_internal_sensor', label:'내부 센서 조회', keywords:['내부','하우스 안','실내','안쪽','하우스내부'] },
+  { name:'get_external_sensor', label:'외부 환경 조회', keywords:['외부','바깥','co2','씨오투','이산화탄소','외기','외부습도','외부 습도','노지'] },
+  { name:'get_crop_status', label:'작물 상태 조회', keywords:['작물','생육','잎','줄기','수확','생장','상태'] },
+  { name:'get_now_time', label:'현재 시각 조회', keywords:['시간','몇시','몇 시','날짜','오늘','지금 몇'] },
+];
 
-  maxAngleInput.addEventListener('input', () => maxAngleVal.textContent = maxAngleInput.value);
-  deadzoneInput.addEventListener('input', () => deadzoneVal.textContent = deadzoneInput.value);
+// 습도/온도처럼 내부/외부 모두에 걸칠 수 있는 모호 키워드 (개념 혼동 유발 지점)
+const AMBIGUOUS = ['습도','온도','기온'];
 
-  function log(msg){
-    const t = new Date().toLocaleTimeString('ko-KR', {hour12:false});
-    logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
-    if (logEl.textContent.length > 4000) logEl.textContent = logEl.textContent.slice(0, 4000);
+const META_PATTERNS = ['뭘 할 수','무엇을 할 수','기능이 뭐','할 수 있는 일','사용법','도움말','네가 뭘','넌 뭘'];
+const WEATHER_PATTERNS = ['날씨','일기예보','비 올','비올','눈 올','예보'];
+
+const PRESETS = [
+  { q:'하우스 습도 얼마나 돼?', tag:'개념 혼동' },
+  { q:'오늘 날씨 알려줘', tag:'비정의 호출' },
+  { q:'네가 할 수 있는 일이 뭐야?', tag:'메타질문' },
+  { q:'오늘 날짜와 작물 상태 알려줘', tag:'과잉 호출' },
+  { q:'외부 CO2 농도 알려줘', tag:'정상' },
+];
+
+function renderPresets(){
+  const box = document.getElementById('presets');
+  PRESETS.forEach(p=>{
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn' + (p.tag!=='정상' ? ' err' : '');
+    btn.textContent = `${p.q}  ·  ${p.tag}`;
+    btn.onclick = ()=>{ document.getElementById('queryInput').value = p.q; run(); };
+    box.appendChild(btn);
+  });
+}
+
+function scoreFunctions(query){
+  const q = query.toLowerCase();
+  return FUNCTIONS.map(fn=>{
+    let hits = 0;
+    fn.keywords.forEach(k=>{ if(q.includes(k.toLowerCase())) hits++; });
+    // 모호 키워드는 내부/외부 둘 다에 약한 점수를 부여해 혼동 상황을 재현
+    AMBIGUOUS.forEach(a=>{
+      if(q.includes(a) && (fn.name==='get_internal_sensor' || fn.name==='get_external_sensor')){
+        hits += 0.4;
+      }
+    });
+    const score = Math.min(1, hits / 1.6);
+    return { ...fn, score };
+  }).sort((a,b)=>b.score-a.score);
+}
+
+function isMeta(query){
+  return META_PATTERNS.some(p=>query.includes(p));
+}
+function isWeather(query){
+  return WEATHER_PATTERNS.some(p=>query.includes(p));
+}
+function isMultiIntent(query){
+  const hasTime = ['시간','날짜','몇시','오늘'].some(k=>query.includes(k));
+  const hasCrop = ['작물','생육','상태'].some(k=>query.includes(k));
+  return hasTime && hasCrop;
+}
+// 외부성을 더 명확히 가리키는 강한 신호 (개념 혼동 해소용)
+function hasStrongExternalSignal(query){
+  return ['co2','씨오투','이산화탄소','외부','바깥','노지','외기'].some(k=>query.includes(k));
+}
+
+function mockResult(fnName){
+  const data = {
+    get_internal_sensor: '내부 온도 24.3℃ / 내부 습도 61%',
+    get_external_sensor: '외부 CO₂ 620ppm / 외부 습도 68% / 외기 22.1℃',
+    get_crop_status: '토마토 3주차 생육 중 (수확 예정 D-18), 최근 관찰 이상 없음',
+    get_now_time: '2026-08-13 (목) 14:32',
+  };
+  return data[fnName] || '(결과 없음)';
+}
+
+function runBaseline(query){
+  const scores = scoreFunctions(query);
+  const calls = [];
+  let note = [];
+
+  if(isWeather(query)){
+    calls.push({ name:'get_weather', undefined:true });
+    note.push('정의되지 않은 get_weather 함수를 스스로 만들어 호출 (비정의 호출)');
+  }
+  if(isMeta(query)){
+    // baseline: 메타질문에도 임의 함수를 호출해버림
+    calls.push({ name: scores[0].name });
+    note.push('메타질문(에이전트 자체에 대한 질문)인데도 불필요한 함수를 추가 호출');
+  }
+  if(!isWeather(query) && !isMeta(query)){
+    // 모호할 때 baseline은 항상 내부 센서를 기본값으로 선택 (개념 혼동 재현)
+    const ambiguous = AMBIGUOUS.some(a=>query.includes(a));
+    if(ambiguous && !hasStrongExternalSignal(query)){
+      calls.push({ name:'get_internal_sensor' });
+      note.push('습도/온도 질의를 항상 "내부 센서"로 단정 → 외부 환경 질의였다면 개념 혼동 발생');
+    } else {
+      calls.push({ name: scores[0].name });
+    }
+    if(isMultiIntent(query)){
+      calls.push({ name:'get_now_time', extra:true });
+      note.push('작물 상태 조회로 충분한데도 get_now_time을 추가로 호출 (과잉 호출)');
+    }
+  }
+  return { scores, calls, note, verified:false };
+}
+
+function runImproved(query){
+  const scores = scoreFunctions(query);
+  const CONF_THRESHOLD = 0.35;
+  const calls = [];
+  let note = [];
+  let verdictType = 'ok';
+
+  if(isMeta(query)){
+    note.push('메타질문으로 분류 → 함수 호출 없이 에이전트가 자신의 기능 목록을 직접 안내 (불필요한 호출 방지)');
+    return { scores, calls:[], note, verdictType:'ok', metaAnswer:true };
   }
 
-  // ---------- Wi-Fi(HTTP) ESP32 연결 ----------
-  // ESP32가 아래 형식의 GET 요청을 받아 처리한다: http://<IP>/steer?v=-80
-  let espIP = '';
-  let wifiConnected = false;
-  let consecutiveFailures = 0;
-
-  function setConnectedUI(on){
-    wifiConnected = on;
-    connectBtn.textContent = on ? '📶 연결 해제' : '📶 연결';
-    connectBtn.classList.toggle('connected', on);
-    connStatus.textContent = on ? `연결됨 (${espIP})` : '연결 안됨';
-    connStatus.classList.toggle('on', on);
+  if(isWeather(query)){
+    note.push('요청과 매칭되는 정의된 함수가 없음 → 없는 함수를 만들어내지 않고 "지원되지 않는 기능"으로 명시적 응답 (자기검증으로 비정의 호출 차단)');
+    return { scores, calls:[], note, verdictType:'warn', unsupported:true };
   }
 
-  async function connectWifi(){
-    const ip = ipInput.value.trim();
-    if (!ip){
-      alert('ESP32의 IP 주소를 입력해주세요 (예: 192.168.0.101)');
+  // 개념 혼동 방지: 강한 외부 신호가 있으면 외부 센서 우선
+  let top = scores[0];
+  if(hasStrongExternalSignal(query)){
+    top = scores.find(s=>s.name==='get_external_sensor') || top;
+    note.push('CO₂/외부 관련 강한 신호를 감지 → 신뢰도 재계산 시 get_external_sensor에 가중치 부여 (개념 혼동 방지)');
+  }
+
+  if(top.score < CONF_THRESHOLD){
+    note.push(`최고 신뢰도(${Math.round(top.score*100)}%)가 임계값(${Math.round(CONF_THRESHOLD*100)}%) 미만 → 바로 실행하지 않고 자기검증 단계에서 보류/확인 필요로 판단`);
+    return { scores, calls:[], note, verdictType:'warn', lowConfidence:true };
+  }
+
+  calls.push({ name: top.name });
+  note.push(`신뢰도 ${Math.round(top.score*100)}%로 "${top.name}" 선택 → 자기검증 통과`);
+
+  if(isMultiIntent(query)){
+    note.push('작물 상태 응답에 이미 최신 관측 시점이 포함되어 있다고 판단 → get_now_time 중복 호출을 생략 (과잉 호출 방지)');
+  }
+
+  return { scores, calls, note, verdictType:'ok' };
+}
+
+function renderScoreBars(scores){
+  return scores.map((s,i)=>{
+    const pct = Math.round(s.score*100);
+    return `<div class="bar-row">
+      <div class="bar-label">${s.name}</div>
+      <div class="bar-track"><div class="bar-fill ${i===0?'top':''}" style="width:${pct}%"></div></div>
+      <div class="bar-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+function renderCallList(calls){
+  if(!calls.length) return '<div class="call-list"><span class="call-chip">호출 없음</span></div>';
+  return '<div class="call-list">' + calls.map(c=>{
+    let cls = 'call-chip';
+    if(c.undefined) cls += ' undefined';
+    else if(c.extra) cls += ' extra';
+    return `<span class="${cls}">${c.name}${c.undefined?' (미정의)':''}${c.extra?' (불필요)':''}</span>`;
+  }).join('') + '</div>';
+}
+
+function renderPane(title, tagClass, tagText, result, query){
+  let verdictHtml = '';
+  if(result.metaAnswer){
+    verdictHtml = `<div class="verdict ok"><b>메타질문으로 처리 (함수 미호출)</b>
+      "저는 내부/외부 환경 조회, 작물 상태 조회, 현재 시각 조회 기능을 제공합니다." 라고 직접 응답</div>`;
+  } else if(result.unsupported){
+    verdictHtml = `<div class="verdict warn"><b>지원되지 않는 요청</b>
+      "죄송합니다, 날씨 예보 조회 기능은 현재 정의되어 있지 않습니다." (함수를 지어내지 않음)</div>`;
+  } else if(result.lowConfidence){
+    verdictHtml = `<div class="verdict warn"><b>신뢰도 부족 — 확인 필요</b>
+      "정확히 어떤 정보를 원하시는지 조금 더 말씀해 주시겠어요?" (임의 실행 보류)</div>`;
+  } else if(result.calls.length){
+    const c = result.calls[0];
+    const cls = c.undefined ? 'bad' : (result.note.some(n=>n.includes('개념 혼동')||n.includes('과잉')||n.includes('비정의')||n.includes('추가')) ? 'warn' : 'ok');
+    verdictHtml = `<div class="verdict ${cls}"><b>최종 응답</b>
+      <div class="final-answer">${c.undefined ? '(실행 불가 — 존재하지 않는 함수)' : mockResult(c.name)}</div></div>`;
+  } else {
+    verdictHtml = `<div class="verdict bad"><b>응답 생성 실패</b></div>`;
+  }
+
+  return `
+  <div class="trace-panel">
+    <h3>${title} <span class="tag ${tagClass}">${tagText}</span></h3>
+    <div class="step">
+      <div class="step-title">1. 질의</div>
+      <div class="final-answer" style="margin-top:0;">"${query}"</div>
+    </div>
+    <div class="step">
+      <div class="step-title">2. 함수별 신뢰도 스코어</div>
+      ${renderScoreBars(result.scores)}
+    </div>
+    <div class="step">
+      <div class="step-title">3. 호출된 함수</div>
+      ${renderCallList(result.calls)}
+    </div>
+    <div class="step">
+      <div class="step-title">4. 판단 근거</div>
+      <ul style="margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.7;">
+        ${result.note.map(n=>`<li>${n}</li>`).join('') || '<li>특이사항 없음</li>'}
+      </ul>
+    </div>
+    <div class="step">
+      <div class="step-title">5. 최종 결과</div>
+      ${verdictHtml}
+    </div>
+  </div>`;
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : String(str);
+  return div.innerHTML;
+}
+
+// --- 웹 배포용(프록시 + 방문자 API 키) 모드에서 쓰는 에이전트 로직 ---
+// smartfarm_agent_openai.py의 TOOLS / mock 함수 / 에이전트 루프와 동일한 내용을
+// 그대로 자바스크립트로 옮긴 것입니다 (브라우저에서 직접 다단계 함수 호출을
+// 처리해야 하므로 프록시가 아니라 여기서 루프를 돕니다).
+const SYSTEM_PROMPT_JS = (
+  "당신은 스마트팜 관리자를 돕는 AI 에이전트입니다. " +
+  "아래에 정의된 함수(도구)만 사용할 수 있으며, 목록에 없는 기능(예: 날씨 예보, 원격 제어 등)을 " +
+  "요청받으면 함수를 지어내지 말고 '해당 기능은 아직 지원하지 않습니다'라고 명확히 답하세요. " +
+  "사용자가 당신 자체(가능한 기능, 사용법 등)에 대해 묻는 경우에는 어떤 함수도 호출하지 말고 " +
+  "직접 설명으로 답하세요. 하나의 함수 호출로 답할 수 있다면 불필요하게 다른 함수를 추가 호출하지 마세요."
+);
+
+const OPENAI_TOOLS_SCHEMA = [
+  { type:'function', function:{ name:'get_internal_sensor', description:'하우스 내부(실내) 온도와 습도를 조회합니다.', parameters:{ type:'object', properties:{}, required:[] } } },
+  { type:'function', function:{ name:'get_external_sensor', description:'하우스 외부 환경(CO2 농도, 외부 습도, 외기 온도)을 조회합니다.', parameters:{ type:'object', properties:{}, required:[] } } },
+  { type:'function', function:{ name:'get_crop_status', description:'현재 재배 중인 작물의 생육 상태와 예상 수확 시기를 조회합니다.', parameters:{ type:'object', properties:{}, required:[] } } },
+  { type:'function', function:{ name:'get_now_time', description:'현재 날짜와 시각을 조회합니다.', parameters:{ type:'object', properties:{}, required:[] } } },
+];
+
+const MOCK_FUNCTIONS_JS = {
+  get_internal_sensor: () => ({ internal_temp_c: 24.3, internal_humidity_pct: 61 }),
+  get_external_sensor: () => ({ external_co2_ppm: 620, external_humidity_pct: 68, external_temp_c: 22.1 }),
+  get_crop_status: () => ({ crop: '토마토', stage: '3주차 생육 중', days_to_harvest: 18, issues: '없음' }),
+  get_now_time: () => ({ now: new Date().toISOString().slice(0,16).replace('T',' ') }),
+};
+
+async function runAgentViaProxy(apiKey, proxyUrl, query){
+  const messages = [
+    { role:'system', content: SYSTEM_PROMPT_JS },
+    { role:'user', content: query },
+  ];
+  const callTrace = [];
+
+  while(true){
+    const res = await fetch(proxyUrl, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        apiKey,
+        model: 'gpt-5.6',
+        messages,
+        tools: OPENAI_TOOLS_SCHEMA,
+        reasoning_effort: 'none',
+      }),
+    });
+    const data = await res.json();
+    if(!res.ok){
+      throw new Error((data && data.error && (data.error.message || JSON.stringify(data.error))) || `HTTP ${res.status}`);
+    }
+
+    const message = data.choices[0].message;
+    messages.push(message);
+
+    if(!message.tool_calls || !message.tool_calls.length){
+      return { answer: message.content || '', calls: callTrace };
+    }
+
+    for(const toolCall of message.tool_calls){
+      const fnName = toolCall.function.name;
+      let fnArgs = {};
+      try { fnArgs = JSON.parse(toolCall.function.arguments || '{}'); } catch(e){ fnArgs = {}; }
+
+      let resultContent, resultObj, isUndefined;
+      if(MOCK_FUNCTIONS_JS[fnName]){
+        resultObj = MOCK_FUNCTIONS_JS[fnName]();
+        resultContent = JSON.stringify(resultObj);
+        isUndefined = false;
+      } else {
+        resultObj = null;
+        resultContent = `오류: '${fnName}'는 정의되지 않은 함수입니다.`;
+        isUndefined = true;
+      }
+      callTrace.push({ name: fnName, args: fnArgs, result: resultObj, undefined: isUndefined });
+
+      messages.push({ role:'tool', tool_call_id: toolCall.id, content: resultContent });
+    }
+  }
+}
+
+async function runReal(query){
+  const area = document.getElementById('resultArea');
+  const backend = window.__smartfarmBackend || 'local';
+
+  if(backend === 'proxy'){
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    const proxyUrl = document.getElementById('proxyUrlInput').value.trim();
+    if(!apiKey){
+      area.innerHTML = `<div class="panel"><div class="verdict warn"><b>API 키를 입력해주세요</b>본인의 OpenAI API 키를 위 입력창에 넣어야 실행됩니다.</div></div>`;
       return;
     }
+    area.innerHTML = `<div class="panel"><div class="empty-state">OpenAI에 요청 중... (프록시: ${escapeHtml(proxyUrl)})</div></div>`;
     try {
-      const res = await fetch(`http://${ip}/steer?v=0`, { method: 'GET', mode: 'cors' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      espIP = ip;
-      consecutiveFailures = 0;
-      setConnectedUI(true);
-      log(`ESP32(${ip})에 연결되었습니다`);
+      const result = await runAgentViaProxy(apiKey, proxyUrl, query);
+      area.innerHTML = renderRealPane(query, result);
     } catch(err){
-      console.error(err);
-      setConnectedUI(false);
-      log('연결 실패: ' + err.message + ' (같은 Wi-Fi인지, IP가 맞는지 확인하세요)');
+      area.innerHTML = `<div class="panel"><div class="verdict bad"><b>실행 실패</b>
+        프록시(${escapeHtml(proxyUrl)})에 연결할 수 없거나 API 키가 올바르지 않을 수 있습니다.
+        로컬에서 테스트 중이라면 <code>vercel dev</code>를 실행했는지 확인해주세요.<br>
+        (${escapeHtml(err.message)})</div></div>`;
     }
+    return;
   }
 
-  function disconnectWifi(){
-    espIP = '';
-    setConnectedUI(false);
-    log('연결 해제됨');
+  // backend === 'local' (server.py)
+  const url = document.getElementById('serverUrlInput').value.trim();
+  area.innerHTML = `<div class="panel"><div class="empty-state">서버에 요청 중... (${escapeHtml(url)})</div></div>`;
+
+  let res, data;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ query }),
+    });
+    data = await res.json();
+  } catch (err) {
+    area.innerHTML = `<div class="panel"><div class="verdict bad"><b>서버에 연결할 수 없습니다</b>
+      <code>python server.py</code>를 먼저 실행했는지, 주소(${escapeHtml(url)})가 맞는지 확인해주세요.<br>
+      (${escapeHtml(err.message)})</div></div>`;
+    return;
   }
 
-  connectBtn.addEventListener('click', () => {
-    if (wifiConnected) disconnectWifi();
-    else connectWifi();
-  });
-
-  ipInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') connectWifi();
-  });
-
-  async function sendValue(v){
-    if (!espIP) return;
-    try {
-      const res = await fetch(`http://${espIP}/steer?v=${v}`, { method: 'GET', mode: 'cors' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      consecutiveFailures = 0;
-    } catch(err){
-      consecutiveFailures++;
-      if (consecutiveFailures === 5){
-        log('ESP32 응답 없음 - 연결이 끊긴 것 같습니다');
-        setConnectedUI(false);
-      }
-    }
+  if(!res.ok){
+    area.innerHTML = `<div class="panel"><div class="verdict bad"><b>서버 오류</b>${escapeHtml(data.error || res.status)}</div></div>`;
+    return;
   }
 
-  // ---------- MediaPipe Hands ----------
-  let latestValue = 0;
-  let latestState = 'STOP';
+  area.innerHTML = renderRealPane(query, data);
+}
 
-  function centroid(landmarks){
-    let sx = 0, sy = 0;
-    for (const p of landmarks){ sx += p.x; sy += p.y; }
-    return { x: sx / landmarks.length, y: sy / landmarks.length };
+function renderRealPane(query, data){
+  const calls = data.calls || [];
+  const callChips = calls.length
+    ? '<div class="call-list">' + calls.map(c=>{
+        const cls = 'call-chip' + (c.undefined ? ' undefined' : '');
+        return `<span class="${cls}">${escapeHtml(c.name)}(${escapeHtml(JSON.stringify(c.args))})${c.undefined?' (미정의)':''}</span>`;
+      }).join('') + '</div>'
+    : '<div class="call-list"><span class="call-chip">호출 없음</span></div>';
+
+  const resultDetails = calls.length
+    ? calls.map(c=>`<li><code>${escapeHtml(c.name)}</code> → ${c.undefined ? '오류 (정의되지 않은 함수)' : escapeHtml(JSON.stringify(c.result))}</li>`).join('')
+    : '<li>함수를 호출하지 않고 바로 답변함 (메타질문 등)</li>';
+
+  return `
+  <div class="trace-panel">
+    <h3>실제 API 연동 결과 <span class="tag improved">LIVE</span></h3>
+    <div class="step">
+      <div class="step-title">1. 질의</div>
+      <div class="final-answer" style="margin-top:0;">"${escapeHtml(query)}"</div>
+    </div>
+    <div class="step">
+      <div class="step-title">2. 실제로 호출된 함수</div>
+      ${callChips}
+    </div>
+    <div class="step">
+      <div class="step-title">3. 함수 실행 결과</div>
+      <ul style="margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.7;">
+        ${resultDetails}
+      </ul>
+    </div>
+    <div class="step">
+      <div class="step-title">4. 최종 응답</div>
+      <div class="final-answer">${escapeHtml(data.answer)}</div>
+    </div>
+  </div>`;
+}
+
+function run(){
+  const query = document.getElementById('queryInput').value.trim();
+  if(!query) return;
+
+  const realMode = document.getElementById('modeToggle').classList.contains('on');
+  if(realMode){
+    runReal(query);
+    return;
   }
 
-  function drawWheel(ctx, cx, cy, radius, angleDeg, state){
-    let hubColor = '#cfd8e6';   // stop
-    if (state === 'LEFT')  hubColor = '#3aa0ff';
-    if (state === 'RIGHT') hubColor = '#ff6a3a';
+  const compareOn = document.getElementById('compareToggle').classList.contains('on');
+  const baseline = runBaseline(query);
+  const improved = runImproved(query);
 
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angleDeg * Math.PI / 180);
-
-    // 바깥 림
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.lineWidth = Math.max(10, radius * 0.14);
-    ctx.strokeStyle = 'rgba(20,20,20,0.85)';
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.stroke();
-
-    // 스포크 3개
-    ctx.lineWidth = Math.max(6, radius * 0.09);
-    ctx.strokeStyle = 'rgba(20,20,20,0.85)';
-    for (let i = 0; i < 3; i++){
-      const a = i * (Math.PI * 2 / 3) - Math.PI / 2;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(radius * Math.cos(a), radius * Math.sin(a));
-      ctx.stroke();
-    }
-
-    // 정중앙 추(허브)
-    const hubR = Math.max(14, radius * 0.22);
-    ctx.beginPath();
-    ctx.arc(0, 0, hubR, 0, Math.PI * 2);
-    ctx.fillStyle = hubColor;
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#141414';
-    ctx.stroke();
-
-    ctx.restore();
+  const area = document.getElementById('resultArea');
+  if(compareOn){
+    area.innerHTML = `<div class="compare">
+      ${renderPane('Baseline (자기검증 미적용)', 'baseline', 'BEFORE', baseline, query)}
+      ${renderPane('자기검증 + 신뢰도 기반 선택', 'improved', 'AFTER', improved, query)}
+    </div>`;
+  } else {
+    area.innerHTML = renderPane('자기검증 + 신뢰도 기반 선택', 'improved', 'AFTER', improved, query);
   }
+}
 
-  function updateUI(state, value, angleDeg, handsCount){
-    angleText.textContent = Math.round(angleDeg);
-    valueText.textContent = value;
-    handsText.textContent = handsCount;
+document.getElementById('compareToggle').onclick = function(){
+  this.classList.toggle('on');
+};
+window.__smartfarmBackend = 'local';
 
-    stateDisplay.textContent = state;
-    stateDisplay.classList.remove('left', 'right', 'stop');
-    stateDisplay.classList.add(state.toLowerCase());
+function selectBackend(kind){
+  window.__smartfarmBackend = kind;
+  document.getElementById('backendLocalBtn').classList.toggle('active', kind === 'local');
+  document.getElementById('backendProxyBtn').classList.toggle('active', kind === 'proxy');
+  document.getElementById('serverUrlRow').style.display = kind === 'local' ? 'flex' : 'none';
+  document.getElementById('localModeNote').style.display = kind === 'local' ? 'block' : 'none';
+  document.getElementById('proxyModeBox').style.display = kind === 'proxy' ? 'block' : 'none';
+}
 
-    handBadge.textContent = handsCount === 2 ? '양손 인식됨 - 핸들 조작 중' :
-      (handsCount === 1 ? '한 손만 인식됨 - 두 손 모두 화면에 비춰주세요' : '손을 인식하는 중...');
+document.getElementById('backendLocalBtn').onclick = ()=> selectBackend('local');
+document.getElementById('backendProxyBtn').onclick = ()=> selectBackend('proxy');
 
-    latestValue = value;
-    latestState = state;
-  }
+document.getElementById('modeToggle').onclick = function(){
+  this.classList.toggle('on');
+  const real = this.classList.contains('on');
+  document.getElementById('realModeOptions').style.display = real ? 'block' : 'none';
+  document.getElementById('compareToggleRow').style.opacity = real ? '0.4' : '1';
+  document.getElementById('compareToggleRow').style.pointerEvents = real ? 'none' : 'auto';
+  if(real) selectBackend(window.__smartfarmBackend || 'local');
+};
+document.getElementById('runBtn').onclick = run;
+document.getElementById('queryInput').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') run();
+});
 
-  function onResults(results){
-    ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // 좌우 반전(거울 모드)으로 화면 전체를 그림
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-    let state = 'STOP', value = 0, angleDeg = 0;
-    const handsCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
-
-    if (handsCount === 2){
-      const c0 = centroid(results.multiHandLandmarks[0]);
-      const c1 = centroid(results.multiHandLandmarks[1]);
-      const p0 = { x: c0.x * canvas.width, y: c0.y * canvas.height };
-      const p1 = { x: c1.x * canvas.width, y: c1.y * canvas.height };
-
-      const left  = p0.x <= p1.x ? p0 : p1;
-      const right = p0.x <= p1.x ? p1 : p0;
-      const dx = right.x - left.x;
-      const dy = right.y - left.y;
-      angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-
-      const maxAngle = parseFloat(maxAngleInput.value);
-      const deadzoneDeg = parseFloat(deadzoneInput.value);
-      value = Math.max(-100, Math.min(100, Math.round((angleDeg / maxAngle) * 100)));
-      // 자동차가 사용자를 마주보는 방향으로 놓이므로 좌/우를 반전한다
-      value = -value;
-      const deadzoneValue = Math.round((deadzoneDeg / maxAngle) * 100);
-
-      if (value > deadzoneValue) state = 'RIGHT';
-      else if (value < -deadzoneValue) state = 'LEFT';
-      else { state = 'STOP'; value = 0; }
-
-      // 두 손을 잇는 그립 라인
-      ctx.beginPath();
-      ctx.moveTo(left.x, left.y);
-      ctx.lineTo(right.x, right.y);
-      ctx.strokeStyle = 'rgba(0,255,150,0.85)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      [p0, p1].forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
-        ctx.fillStyle = '#00ff99';
-        ctx.fill();
-      });
-
-      for (const lm of results.multiHandLandmarks){
-        drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.35)', lineWidth: 2 });
-        drawLandmarks(ctx, lm, { color: '#00d4ff', lineWidth: 1, radius: 2 });
-      }
-
-      const cx = (left.x + right.x) / 2;
-      const cy = (left.y + right.y) / 2;
-      const radius = Math.max(60, Math.hypot(dx, dy) / 2);
-      drawWheel(ctx, cx, cy, radius, angleDeg, state);
-    } else {
-      for (const lm of (results.multiHandLandmarks || [])){
-        drawConnectors(ctx, lm, HAND_CONNECTIONS, { color: 'rgba(255,255,255,0.35)', lineWidth: 2 });
-        drawLandmarks(ctx, lm, { color: '#00d4ff', lineWidth: 1, radius: 2 });
-      }
-    }
-
-    ctx.restore();
-    updateUI(state, value, angleDeg, handsCount);
-  }
-
-  const hands = new Hands({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-  });
-  hands.setOptions({
-    maxNumHands: 2,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.7,
-    minTrackingConfidence: 0.7
-  });
-  hands.onResults(onResults);
-
-  const videoEl = document.createElement('video');
-  videoEl.style.display = 'none';
-  document.body.appendChild(videoEl);
-
-  const camera = new Camera(videoEl, {
-    onFrame: async () => { await hands.send({ image: videoEl }); },
-    width: 640,
-    height: 480
-  });
-
-  camera.start().then(() => {
-    handBadge.textContent = '손을 인식하는 중...';
-    log('노트북 카메라 시작됨');
-  }).catch(err => {
-    handBadge.textContent = '카메라 접근 실패';
-    log('카메라 오류: ' + err.message);
-  });
-
-  // ---------- 100ms 주기로 ESP32에 전송 ----------
-  setInterval(() => {
-    if (sendToggle.checked && wifiConnected){
-      sendValue(latestValue);
-    }
-  }, 100);
-
-})();
+renderPresets();
+selectBackend('local');
 </script>
+
 </body>
 </html>
