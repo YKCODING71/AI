@@ -308,23 +308,24 @@
     text-align:center;
     padding:40px 10px;
   }
+  .eval-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .eval-table th{padding:6px 8px;text-align:left;color:var(--muted);border-bottom:1px solid var(--border);}
+  .eval-table td{padding:6px 8px;border-bottom:1px solid var(--border);}
+  .stat-card{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .stat-card .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .stat-card .stat-value{font-size:22px;font-weight:700;margin:6px 0 2px;color:var(--text);}
+  .stat-card .stat-sub{font-size:11.5px;color:var(--muted);}
+  .verdict-badge{font-size:10.5px;padding:3px 9px;border-radius:999px;font-weight:700;border:1px solid currentColor;background:rgba(0,0,0,0.03);}
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <span class="badge">3회차 진행 데모</span>
+    <span class="badge">5회차 진행 데모</span>
     <span class="badge">자기검증 · 신뢰도 기반 함수 선택</span>
   </div>
   <h1>스마트팜 AI 에이전트 — 함수 호출(Function Calling) 신뢰성 시연</h1>
-  <p>
-    자연어 명령을 입력하면 에이전트가 정의된 함수(조회 기능) 중 어떤 것을 호출할지 결정하는 과정을 단계별로 보여줍니다.
-    <b>시뮬레이션 모드</b>는 보고서의 4가지 오류 유형(비정의 호출·메타질문 처리실패·개념 혼동·과잉 호출)이
-    어떻게 발생·완화되는지 키워드 기반 mock 로직으로 보여주는 개념 시연이고,
-    <b>실제 API 연동 모드</b>는 진짜 OpenAI 함수 호출 결과를 보여주며, 로컬 파이썬 서버(server.py)로 연결하거나
-    본인의 API 키를 직접 입력해 웹(GitHub + Vercel 배포)에서 바로 실행하는 두 가지 방식을 지원합니다.
-  </p>
 </header>
 
 <div class="layout">
@@ -382,18 +383,11 @@
           <div class="input-row">
             <input id="proxyUrlInput" type="text" value="/api/openai-proxy" placeholder="프록시 주소 (Vercel 배포 시 자동으로 /api/openai-proxy)">
           </div>
-          <div class="note">
-            이 모드는 GitHub 저장소를 Vercel에 연결해 웹에 배포했을 때 쓰는 방식입니다.
-            입력한 API 키는 어디에도 저장되지 않고(새로고침하면 사라짐), 오직 api/openai-proxy.js를 거쳐
-            OpenAI로만 그대로 전달됩니다 — 브라우저가 api.openai.com에 직접 요청하면 CORS 정책 때문에
-            차단되기 때문에 이 얇은 중계 함수가 필요합니다. 로컬에서 미리 테스트하려면
-            <code>vercel dev</code>로 실행한 뒤 이 페이지를 열면 됩니다.
-          </div>
+          
         </div>
 
         <div class="note" style="margin-top:10px;">
-          버튼을 누를 때마다 실제 OpenAI API가 호출되어 소액의 비용이 발생합니다.
-          실제 모드에서는 신뢰도 점수·baseline 비교가 표시되지 않습니다(진짜 모델의 실제 판단 결과만 보여줍니다).
+          버튼을 누를 때마다 실제 OpenAI API가 호출
         </div>
       </div>
     </div>
@@ -403,6 +397,43 @@
         <div class="empty-state">위에서 예시 질의를 클릭하거나 직접 명령을 입력한 뒤 [실행]을 눌러보세요.</div>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="layout" style="grid-template-columns:1fr;padding-top:0;">
+  <div class="panel" id="evalPanel">
+    <h2>1단계 정량평가 — 32문항 Baseline 배치 테스트 (PRD 1단계)</h2>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.6;margin:0 0 14px;">
+      PRD 1단계 설계에 맞춰 32문항(A 단순조회 · B 유사함수혼동 · C 메타질문 · D 범위외질문 각 8문항)을
+      baseline 에이전트에 순서대로 실행하고, 오류유형(E1 비정의호출 · E2 과잉호출 · E3 개념혼동 · E4 과소호출) 기준으로
+      자동 채점하여 Precision/Recall과 카테고리별·오류유형별 표를 산출
+    </p>
+
+    <div class="toggle-row" style="margin-bottom:10px;">
+      <span>실행 방식: 시뮬레이션(mock, 무료·즉시)</span>
+      <div class="switch" id="evalModeToggle"></div>
+      <span>실제 API (server.py 필요, 32회 호출 · 약 1~2분)</span>
+    </div>
+
+    <div class="input-row" id="evalServerUrlRow" style="display:none;max-width:460px;margin-bottom:10px;">
+      <input id="evalServerUrlInput" type="text" value="http://127.0.0.1:5050/api/run" placeholder="로컬 서버 주소 (server.py 실행 주소)">
+    </div>
+
+    <div class="input-row" id="evalPromptModeRow" style="display:none;max-width:460px;margin-bottom:10px;">
+      <select id="evalPromptMode" style="flex:1;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);font-size:13px;">
+        <option value="naive">순수 baseline (오류방지 지침 없음) — 1단계 측정용 권장</option>
+        <option value="guided">현재 프롬프트(오류방지 지침 포함, smartfarm_agent_openai.py 기본값)</option>
+      </select>
+    </div>
+    <div class="note" id="evalPromptModeNote" style="display:none;margin-top:0;margin-bottom:10px;padding-top:0;border-top:none;">
+    </div>
+
+    <div class="input-row" style="max-width:260px;">
+      <button class="run-btn" id="evalRunBtn" style="width:100%;">32문항 전체 실행</button>
+    </div>
+
+    <div id="evalProgress" style="display:none;margin-top:12px;font-size:12.5px;color:var(--muted);"></div>
+    <div id="evalResults" style="margin-top:16px;"></div>
   </div>
 </div>
 
@@ -851,6 +882,273 @@ document.getElementById('runBtn').onclick = run;
 document.getElementById('queryInput').addEventListener('keydown', e=>{
   if(e.key === 'Enter') run();
 });
+
+// ===========================================================================
+// 1단계 정량평가: 32문항 baseline 배치 테스트 (PRD 1단계)
+// ===========================================================================
+
+// PRD Appendix A 기준 32문항 — 이 페이지에 정의된 4개 함수에 맞게 조정
+const TEST_SET_32 = [
+  // A. 단순 조회형 (8) — 단일 함수로 명확히 응답 가능
+  {id:1, category:'A', query:'지금 하우스 내부 온도가 몇 도야?', expected_call:true, expected_function:['get_internal_sensor']},
+  {id:2, category:'A', query:'내부 습도 알려줘', expected_call:true, expected_function:['get_internal_sensor']},
+  {id:3, category:'A', query:'외부 기온이 몇 도야?', expected_call:true, expected_function:['get_external_sensor']},
+  {id:4, category:'A', query:'외부 CO2 농도 확인해줘', expected_call:true, expected_function:['get_external_sensor']},
+  {id:5, category:'A', query:'작물 생육 상태 좀 보여줘', expected_call:true, expected_function:['get_crop_status']},
+  {id:6, category:'A', query:'토마토 수확까지 며칠 남았어?', expected_call:true, expected_function:['get_crop_status']},
+  {id:7, category:'A', query:'지금 몇 시야?', expected_call:true, expected_function:['get_now_time']},
+  {id:8, category:'A', query:'오늘 날짜 알려줘', expected_call:true, expected_function:['get_now_time']},
+  // B. 유사 함수 혼동형 (8) — 내부/외부, 복수 함수 등 헷갈리기 쉬운 문항
+  {id:9, category:'B', query:'하우스 안 습도 확인해줘', expected_call:true, expected_function:['get_internal_sensor']},
+  {id:10, category:'B', query:'하우스 밖 습도는?', expected_call:true, expected_function:['get_external_sensor']},
+  {id:11, category:'B', query:'재배 공간 온도 확인해줘', expected_call:true, expected_function:['get_internal_sensor']},
+  {id:12, category:'B', query:'이산화탄소 농도 얼마나 돼?', expected_call:true, expected_function:['get_external_sensor']},
+  {id:13, category:'B', query:'지금 실내 온도 어때?', expected_call:true, expected_function:['get_internal_sensor']},
+  {id:14, category:'B', query:'노지 습도 알려줘', expected_call:true, expected_function:['get_external_sensor']},
+  {id:15, category:'B', query:'작물 상태랑 지금 내부 온도 같이 알려줘', expected_call:true, expected_function:['get_crop_status','get_internal_sensor']},
+  {id:16, category:'B', query:'센서 값 다 보여줘', expected_call:true, expected_function:['get_internal_sensor','get_external_sensor']},
+  // C. 메타질문형 (8) — 함수 호출이 필요 없는 질문
+  {id:17, category:'C', query:'너는 무슨 모델이야?', expected_call:false, expected_function:[]},
+  {id:18, category:'C', query:'고마워', expected_call:false, expected_function:[]},
+  {id:19, category:'C', query:'너 이름이 뭐야?', expected_call:false, expected_function:[]},
+  {id:20, category:'C', query:'스마트팜이 뭔지 설명해줘', expected_call:false, expected_function:[]},
+  {id:21, category:'C', query:'너는 어떤 기능을 할 수 있어?', expected_call:false, expected_function:[]},
+  {id:22, category:'C', query:'안녕', expected_call:false, expected_function:[]},
+  {id:23, category:'C', query:'이 시스템 사용법 알려줘', expected_call:false, expected_function:[]},
+  {id:24, category:'C', query:'함수 호출이 뭔지 설명해줘', expected_call:false, expected_function:[]},
+  // D. 범위 외 질문형 (8) — 정의된 함수 없음, 호출 없이 "지원 안 함" 응답이 정답
+  {id:25, category:'D', query:'물 자동으로 줘', expected_call:false, expected_function:[]},
+  {id:26, category:'D', query:'창문 좀 열어줘', expected_call:false, expected_function:[]},
+  {id:27, category:'D', query:'내일 날씨 예보 알려줘', expected_call:false, expected_function:[]},
+  {id:28, category:'D', query:'지난주 온도 기록 보여줘', expected_call:false, expected_function:[]},
+  {id:29, category:'D', query:'다른 농장이랑 비교해줘', expected_call:false, expected_function:[]},
+  {id:30, category:'D', query:'병충해 진단해줘', expected_call:false, expected_function:[]},
+  {id:31, category:'D', query:'비료 추천해줘', expected_call:false, expected_function:[]},
+  {id:32, category:'D', query:'출입문 잠가줘', expected_call:false, expected_function:[]},
+];
+
+const CATEGORY_LABEL = {A:'단순조회', B:'유사함수혼동', C:'메타질문', D:'범위외질문'};
+const VERDICT_LABEL = {
+  correct: {label:'정답', cls:'good'},
+  E1: {label:'E1 비정의호출', cls:'bad'},
+  E2: {label:'E2 과잉호출', cls:'warn'},
+  E3: {label:'E3 개념혼동', cls:'warn'},
+  E4: {label:'E4 과소호출', cls:'bad'},
+};
+
+// PRD 1.6절 기준 오류유형 판정 로직 (우선순위: E1 > 정답 일치 > E4 > E3 > E2)
+function gradeItem(item, calls){
+  calls = calls || [];
+  const hasUndefined = calls.some(c=>c.undefined);
+  if(hasUndefined) return 'E1';
+
+  const calledNames = calls.map(c=>c.name);
+  const calledSet = new Set(calledNames);
+
+  if(!item.expected_call){
+    if(calledNames.length > 0) return 'E2';
+    return 'correct';
+  }
+
+  const expectedSet = new Set(item.expected_function);
+  if(calledNames.length === 0) return 'E4';
+
+  const sameSet = calledSet.size === expectedSet.size && [...calledSet].every(n=>expectedSet.has(n));
+  if(sameSet) return 'correct';
+
+  const isSubset = [...calledSet].every(n=>expectedSet.has(n));
+  if(isSubset) return 'E4'; // 필요한 함수 중 일부만 호출 (부분 누락)
+
+  const isSuperset = [...expectedSet].every(n=>calledSet.has(n));
+  if(isSuperset) return 'E2'; // 필요한 함수는 다 호출했지만 불필요한 것도 추가 호출
+
+  const overlapsExpected = [...calledSet].some(n=>expectedSet.has(n));
+  if(!overlapsExpected) return 'E3'; // 기대와 전혀 다른(유사) 함수 선택 → 개념 혼동
+
+  return 'E3'; // 일부만 겹치는 복합 오류 → 개념혼동으로 분류 (수동확인 권장)
+}
+
+function callsFromMockResult(result){
+  // runBaseline()의 반환값을 배치평가 공통 포맷({name, undefined})으로 변환
+  return (result.calls || []).map(c=>({ name:c.name, undefined: !!c.undefined }));
+}
+
+async function callRealApiOnce(query, promptMode){
+  const urlEl = document.getElementById('evalServerUrlInput');
+  const url = (urlEl && urlEl.value.trim()) || 'http://127.0.0.1:5050/api/run';
+  const res = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ query, prompt_mode: promptMode }),
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.calls || [];
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+async function runBatchEvaluation(){
+  const useReal = document.getElementById('evalModeToggle').classList.contains('on');
+  const promptMode = document.getElementById('evalPromptMode').value;
+  const progressEl = document.getElementById('evalProgress');
+  const resultsEl = document.getElementById('evalResults');
+  progressEl.style.display = 'block';
+  resultsEl.innerHTML = '';
+
+  const rows = [];
+  for(let i=0;i<TEST_SET_32.length;i++){
+    const item = TEST_SET_32[i];
+    progressEl.textContent = `${i+1}/${TEST_SET_32.length} 처리 중... "${item.query}"`;
+    let calls = [];
+    let errorMsg = null;
+    try{
+      if(useReal){
+        calls = await callRealApiOnce(item.query, promptMode);
+        await sleep(300); // 서버/레이트리밋을 배려한 짧은 딜레이
+      } else {
+        calls = callsFromMockResult(runBaseline(item.query));
+      }
+    } catch(err){
+      errorMsg = err.message;
+    }
+    const verdict = errorMsg ? null : gradeItem(item, calls);
+    rows.push({ item, calls, verdict, errorMsg });
+  }
+
+  progressEl.textContent = `완료 (${TEST_SET_32.length}/${TEST_SET_32.length}) — 실행방식: ${useReal ? ('실제 API / '+promptMode) : '시뮬레이션'}`;
+  renderEvalResults(rows, useReal, promptMode);
+}
+
+function renderEvalResults(rows, usedReal, promptMode){
+  const resultsEl = document.getElementById('evalResults');
+  const validRows = rows.filter(r=>!r.errorMsg);
+  const errorRows = rows.filter(r=>r.errorMsg);
+
+  const counts = {correct:0, E1:0, E2:0, E3:0, E4:0};
+  validRows.forEach(r=>{ counts[r.verdict] = (counts[r.verdict]||0) + 1; });
+
+  const catStats = {};
+  ['A','B','C','D'].forEach(c=>{
+    const items = validRows.filter(r=>r.item.category===c);
+    const correctN = items.filter(r=>r.verdict==='correct').length;
+    catStats[c] = { total: items.length, correct: correctN };
+  });
+
+  let totalCalls = 0, correctCalls = 0, expectedCallsTotal = 0;
+  validRows.forEach(r=>{
+    const expectedSet = new Set(r.item.expected_function);
+    totalCalls += r.calls.length;
+    correctCalls += r.calls.filter(c=>!c.undefined && expectedSet.has(c.name)).length;
+    expectedCallsTotal += r.item.expected_function.length;
+  });
+  const precision = totalCalls > 0 ? (correctCalls/totalCalls) : 0;
+  const recall = expectedCallsTotal > 0 ? (correctCalls/expectedCallsTotal) : 0;
+  const accuracy = validRows.length > 0 ? (counts.correct/validRows.length) : 0;
+
+  const pct = n => `${Math.round(n*1000)/10}%`;
+
+  const html = `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+    <div class="stat-card"><div class="stat-label">전체 정답률</div><div class="stat-value">${pct(accuracy)}</div><div class="stat-sub">${counts.correct}/${validRows.length}문항</div></div>
+    <div class="stat-card"><div class="stat-label">Precision (호출 단위)</div><div class="stat-value">${pct(precision)}</div><div class="stat-sub">${correctCalls}/${totalCalls}회 호출</div></div>
+    <div class="stat-card"><div class="stat-label">Recall (호출 단위)</div><div class="stat-value">${pct(recall)}</div><div class="stat-sub">${correctCalls}/${expectedCallsTotal}회 필요</div></div>
+    <div class="stat-card"><div class="stat-label">실행 방식</div><div class="stat-value" style="font-size:15px;">${usedReal? ('실제 API · '+promptMode) : '시뮬레이션'}</div><div class="stat-sub">${errorRows.length>0? errorRows.length+'건 실행 실패':'실행 오류 없음'}</div></div>
+  </div>
+
+  <h3 style="font-size:13px;margin:0 0 8px;">오류유형별 카운트 (E1~E4)</h3>
+  <table class="eval-table" style="margin-bottom:20px;">
+    <thead><tr><th>정답</th><th>E1 비정의호출</th><th>E2 과잉호출</th><th>E3 개념혼동</th><th>E4 과소호출</th></tr></thead>
+    <tbody><tr><td>${counts.correct}</td><td>${counts.E1}</td><td>${counts.E2}</td><td>${counts.E3}</td><td>${counts.E4}</td></tr></tbody>
+  </table>
+
+  <h3 style="font-size:13px;margin:0 0 8px;">카테고리별 정답률</h3>
+  <table class="eval-table" style="margin-bottom:20px;">
+    <thead><tr><th>카테고리</th><th>정답 / 전체</th><th>정답률</th></tr></thead>
+    <tbody>
+      ${['A','B','C','D'].map(c=>`<tr>
+        <td>${c} (${CATEGORY_LABEL[c]})</td>
+        <td>${catStats[c].correct} / ${catStats[c].total}</td>
+        <td>${catStats[c].total>0?pct(catStats[c].correct/catStats[c].total):'-'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+
+  <h3 style="font-size:13px;margin:0 0 8px;">32문항 상세 결과</h3>
+  <div style="max-height:480px;overflow:auto;border:1px solid var(--border);border-radius:10px;">
+  <table class="eval-table">
+    <thead style="position:sticky;top:0;background:#fff;">
+      <tr><th>#</th><th>카테고리</th><th>질문</th><th>기대 함수</th><th>실제 호출</th><th>판정</th></tr>
+    </thead>
+    <tbody>
+      ${rows.map(r=>{
+        if(r.errorMsg){
+          return `<tr>
+            <td>${r.item.id}</td><td>${r.item.category}</td>
+            <td>${escapeHtml(r.item.query)}</td><td>${r.item.expected_function.join(', ')||'-'}</td>
+            <td colspan="2" style="color:var(--bad);">실행 실패: ${escapeHtml(r.errorMsg)}</td>
+          </tr>`;
+        }
+        const v = VERDICT_LABEL[r.verdict];
+        const calledStr = r.calls.length ? r.calls.map(c=>c.name+(c.undefined?'(미정의)':'')).join(', ') : '호출 없음';
+        return `<tr>
+          <td>${r.item.id}</td><td>${r.item.category}</td>
+          <td>${escapeHtml(r.item.query)}</td>
+          <td style="font-family:monospace;">${r.item.expected_function.join(', ')||'(없음)'}</td>
+          <td style="font-family:monospace;">${escapeHtml(calledStr)}</td>
+          <td><span class="verdict-badge" style="color:var(--${v.cls});">${v.label}</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+  </div>
+
+  <div style="margin-top:14px;display:flex;gap:8px;">
+    <button class="preset-btn" id="downloadCsvBtn">CSV 다운로드</button>
+    <button class="preset-btn" id="downloadJsonBtn">원본 로그(JSON) 다운로드</button>
+  </div>
+  `;
+
+  resultsEl.innerHTML = html;
+  window.__lastEvalRows = rows;
+
+  document.getElementById('downloadCsvBtn').onclick = ()=>downloadEvalCsv(rows);
+  document.getElementById('downloadJsonBtn').onclick = ()=>downloadEvalJson(rows);
+}
+
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadEvalCsv(rows){
+  const header = ['id','category','query','expected_function','called_function','verdict'];
+  const lines = [header.join(',')];
+  rows.forEach(r=>{
+    const called = r.errorMsg ? '실행실패' : (r.calls.map(c=>c.name+(c.undefined?'(미정의)':'')).join('|') || '호출없음');
+    const verdict = r.errorMsg ? 'ERROR' : r.verdict;
+    const esc = s => `"${String(s).replace(/"/g,'""')}"`;
+    lines.push([r.item.id, r.item.category, esc(r.item.query), esc(r.item.expected_function.join('|')), esc(called), verdict].join(','));
+  });
+  downloadBlob(lines.join('\n'), 'baseline_eval_results.csv', 'text/csv;charset=utf-8;');
+}
+
+function downloadEvalJson(rows){
+  downloadBlob(JSON.stringify(rows, null, 2), 'baseline_eval_results.json', 'application/json;charset=utf-8;');
+}
+
+document.getElementById('evalModeToggle').onclick = function(){
+  this.classList.toggle('on');
+  const real = this.classList.contains('on');
+  document.getElementById('evalServerUrlRow').style.display = real ? 'flex' : 'none';
+  document.getElementById('evalPromptModeRow').style.display = real ? 'flex' : 'none';
+  document.getElementById('evalPromptModeNote').style.display = real ? 'block' : 'none';
+};
+document.getElementById('evalRunBtn').onclick = runBatchEvaluation;
 
 renderPresets();
 selectBackend('local');
