@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 DHT11 온도 모니터</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; background: #f3f6fb; color: #172033; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 16px; }
+    main { max-width: 960px; margin: auto; }
+    h1 { margin: 0 0 20px; font-size: clamp(1.5rem, 4vw, 2rem); }
+    .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 8px 30px #1d2a4414; margin-bottom: 16px; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label { display: grid; gap: 6px; font-size: .88rem; color: #526078; flex: 1 1 270px; }
+    input, button { height: 42px; border-radius: 9px; font: inherit; }
+    input { border: 1px solid #c9d2e3; padding: 0 12px; color: #172033; }
+    button { border: 0; padding: 0 18px; cursor: pointer; font-weight: 700; }
+    #connect { background: #2864dc; color: white; }
+    #stop { background: #e7ebf2; color: #27344b; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .status { margin-top: 14px; display: flex; align-items: center; gap: 8px; color: #5c687c; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa5b6; }
+    .dot.on { background: #20a464; box-shadow: 0 0 0 4px #20a46420; }
+    .dot.error { background: #d74444; }
+    .readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .reading { background: #f7f9fc; border-radius: 12px; padding: 16px; }
+    .reading span { color: #667287; font-size: .85rem; }
+    .reading strong { display: block; margin-top: 5px; font-size: 1.8rem; }
+    .chart-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .chart-head h2 { font-size: 1.05rem; margin: 0; }
+    #count { font-size: .84rem; color: #6d788b; }
+    .chart-wrap { position: relative; height: 360px; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .hint { color: #667287; font-size: .85rem; line-height: 1.6; }
+    @media (max-width: 520px) { .readings { grid-template-columns: 1fr; } .chart-wrap { height: 280px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ESP32 DHT11 온도 모니터</h1>
+
+  <section class="card">
+    <div class="controls">
+      <label>ESP32 IP 주소
+        <input id="ip" type="text" inputmode="url" placeholder="예: 192.168.0.25" autocomplete="off">
+      </label>
+      <button id="connect" type="button">연결</button>
+      <button id="stop" type="button" disabled>중지</button>
+    </div>
+    <div class="status"><i id="dot" class="dot"></i><span id="status">IP를 입력하고 연결하세요.</span></div>
+  </section>
+
+  <section class="card readings">
+    <div class="reading"><span>현재 온도</span><strong id="temperature">--.- °C</strong></div>
+    <div class="reading"><span>현재 습도</span><strong id="humidity">--.- %</strong></div>
+  </section>
+
+  <section class="card">
+    <div class="chart-head"><h2>온도 변화</h2><span id="count">0개 데이터</span></div>
+    <div class="chart-wrap"><canvas id="chart" aria-label="온도 꺾은선그래프"></canvas></div>
+  </section>
+
+  <p class="hint">ESP32와 이 기기가 같은 Wi‑Fi에 있어야 합니다. DHT11의 권장 측정 간격을 고려해 2초마다 수집하며, 최근 60개 값을 표시합니다.</p>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ipInput = $('ip');
+  const connectButton = $('connect');
+  const stopButton = $('stop');
+  const canvas = $('chart');
+  const ctx = canvas.getContext('2d');
+  const samples = [];
+  const MAX_SAMPLES = 60;
+  let timer = null;
+  let endpoint = '';
+  let requestInProgress = false;
+
+  ipInput.value = localStorage.getItem('esp32-ip') || '';
+
+  function normalizeEndpoint(value) {
+    let host = value.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(host)) host = `http://${host}`;
+    const url = new URL(host);
+    if (!url.hostname) throw new Error('올바른 IP 주소를 입력하세요.');
+    return `${url.origin}/data`;
+  }
+
+  function setStatus(message, state = '') {
+    $('status').textContent = message;
+    $('dot').className = `dot ${state}`;
+  }
+
+  async function collect() {
+    if (requestInProgress) return;
+    requestInProgress = true;
+    try {
+      const response = await fetch(endpoint, { cache: 'no-store', signal: AbortSignal.timeout(3500) });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const temperature = Number(data.temperature);
+      const humidity = Number(data.humidity);
+      if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) throw new Error('잘못된 센서 데이터');
+
+      samples.push({ temperature, time: new Date() });
+      if (samples.length > MAX_SAMPLES) samples.shift();
+      $('temperature').textContent = `${temperature.toFixed(1)} °C`;
+      $('humidity').textContent = `${humidity.toFixed(1)} %`;
+      $('count').textContent = `${samples.length}개 데이터`;
+      setStatus(`연결됨 · ${new Date().toLocaleTimeString()} 수신`, 'on');
+      drawChart();
+    } catch (error) {
+      setStatus(`수신 실패: ${error.message}`, 'error');
+    } finally {
+      requestInProgress = false;
+    }
+  }
+
+  function start() {
+    try {
+      endpoint = normalizeEndpoint(ipInput.value);
+    } catch (error) {
+      setStatus(error.message, 'error');
+      return;
+    }
+    stop();
+    localStorage.setItem('esp32-ip', ipInput.value.trim());
+    connectButton.disabled = true;
+    stopButton.disabled = false;
+    setStatus('연결 중…');
+    collect();
+    timer = setInterval(collect, 2000);
+  }
+
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    requestInProgress = false;
+    connectButton.disabled = false;
+    stopButton.disabled = true;
+    if (endpoint) setStatus('수집이 중지되었습니다.');
+  }
+
+  function drawChart() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const width = rect.width, height = rect.height;
+    const pad = { left: 48, right: 16, top: 20, bottom: 42 };
+    const plotW = width - pad.left - pad.right;
+    const plotH = height - pad.top - pad.bottom;
+    ctx.clearRect(0, 0, width, height);
+
+    const values = samples.map(s => s.temperature);
+    let min = values.length ? Math.floor(Math.min(...values) - 2) : 15;
+    let max = values.length ? Math.ceil(Math.max(...values) + 2) : 35;
+    if (max - min < 6) { min -= 3; max += 3; }
+
+    ctx.font = '12px system-ui';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#dfe5ef';
+    ctx.fillStyle = '#6a768a';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.top + plotH * i / 5;
+      const value = max - (max - min) * i / 5;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
+      ctx.textAlign = 'right'; ctx.fillText(`${value.toFixed(1)}°`, pad.left - 8, y);
+    }
+
+    if (!samples.length) {
+      ctx.textAlign = 'center';
+      ctx.fillText('연결하면 온도 데이터가 표시됩니다.', pad.left + plotW / 2, pad.top + plotH / 2);
+      return;
+    }
+
+    const xAt = (i) => pad.left + (samples.length === 1 ? plotW / 2 : plotW * i / (samples.length - 1));
+    const yAt = (v) => pad.top + (max - v) / (max - min) * plotH;
+    ctx.beginPath();
+    samples.forEach((sample, i) => {
+      const x = xAt(i), y = yAt(sample.temperature);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.strokeStyle = '#2864dc'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.stroke();
+
+    const lastIndex = samples.length - 1;
+    ctx.beginPath(); ctx.arc(xAt(lastIndex), yAt(samples[lastIndex].temperature), 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#2864dc'; ctx.fill();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = '#6a768a';
+    ctx.fillText(samples[0].time.toLocaleTimeString(), pad.left, height - 27);
+    ctx.textAlign = 'right';
+    ctx.fillText(samples[lastIndex].time.toLocaleTimeString(), width - pad.right, height - 27);
+  }
+
+  connectButton.addEventListener('click', start);
+  stopButton.addEventListener('click', stop);
+  ipInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') start(); });
+  window.addEventListener('resize', drawChart);
+  drawChart();
+</script>
+</body>
+</html>
