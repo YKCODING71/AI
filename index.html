@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESP32 DHT11 온도 모니터</title>
+  <title>DHT11 온도/습도 모니터</title>
   <style>
     :root { color-scheme: light; font-family: system-ui, sans-serif; background: #f3f6fb; color: #172033; }
     * { box-sizing: border-box; }
@@ -38,7 +38,7 @@
 </head>
 <body>
 <main>
-  <h1>ESP32 DHT11 온도 모니터</h1>
+  <h1>DHT11 온도/습도 모니터</h1>
 
   <section class="card">
     <div class="controls">
@@ -61,7 +61,7 @@
     <div class="chart-wrap"><canvas id="chart" aria-label="온도 꺾은선그래프"></canvas></div>
   </section>
 
-  <p class="hint">ESP32와 이 기기가 같은 Wi‑Fi에 있어야 합니다. DHT11의 권장 측정 간격을 고려해 2초마다 수집하며, 최근 60개 값을 표시합니다.</p>
+  <p class="hint">임베디드시스템과 이 기기가 같은 Wi‑Fi에 있어야 합니다. DHT11의 권장 측정 간격을 고려해 2초마다 수집하며, 최근 60개 값을 표시합니다.</p>
 </main>
 
 <script>
