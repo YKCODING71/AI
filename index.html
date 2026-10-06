@@ -42,7 +42,7 @@
 
   <section class="card">
     <div class="controls">
-      <label>ESP32 IP 주소
+      <label>IP 주소
         <input id="ip" type="text" inputmode="url" placeholder="예: 192.168.0.25" autocomplete="off">
       </label>
       <button id="connect" type="button">연결</button>
@@ -77,7 +77,7 @@
   let endpoint = '';
   let requestInProgress = false;
 
-  ipInput.value = localStorage.getItem('esp32-ip') || '';
+  ipInput.value = localStorage.getItem('ip') || '';
 
   function normalizeEndpoint(value) {
     let host = value.trim().replace(/\/+$/, '');
@@ -125,7 +125,7 @@
       return;
     }
     stop();
-    localStorage.setItem('esp32-ip', ipInput.value.trim());
+    localStorage.setItem('ip', ipInput.value.trim());
     connectButton.disabled = true;
     stopButton.disabled = false;
     setStatus('연결 중…');
